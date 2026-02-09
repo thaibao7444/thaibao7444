@@ -1,1 +1,12 @@
+local gameid = {
+    [155615604] = "https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt",    
+    [131623223084840] = "https://linkscript.txt"
+}
 
+local url = gameid[game.PlaceId]
+
+if url then
+    loadstring(game:HttpGet(url))()
+else
+    warn("ok")
+end
