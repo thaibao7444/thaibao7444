@@ -1,6 +1,6 @@
 local gameid = {
-    [155615604] = "https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt",    
-    [131623223084840] = "https://linkscript.txt"
+    [155615604] = "https://raw.githubusercontent.com/thaibao7444/thaibao7444/refs/heads/main/TbaoHubPrisonLife",    
+    [131623223084840] = "https://raw.githubusercontent.com/thaibao7444/thaibao7444/refs/heads/main/TbaoHubEscapeTsunamiForBrainrots"
 }
 
 local url = gameid[game.PlaceId]
