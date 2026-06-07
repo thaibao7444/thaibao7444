@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PON HELLFIRE - Audio Controller (Collapsible + Draggable)
+// @name         PON HELLFIRE - Audio Controller (FIXED DRAG)
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  Bảng điều khiển âm thanh LEGACY cho Discord Web - Có thể thu gọn, kéo thả, lưu vị trí
+// @version      2.1
+// @description  Bảng điều khiển âm thanh LEGACY cho Discord Web - Đã sửa lỗi kéo thả, thu gọn mượt mà
 // @author       PonFire
 // @match        https://discord.com/*
 // @grant        GM_addStyle
@@ -28,10 +28,10 @@
             color: #ffaa33;
             text-shadow: 0 0 3px #ff0000;
             backdrop-filter: blur(12px);
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: rgba(0, 0, 0, 0.92);
             z-index: 999999;
             box-shadow: 0 0 15px rgba(255, 50, 0, 0.6);
-            transition: all 0.2s ease;
+            transition: width 0.2s ease;
             user-select: none;
         }
         .pon-header {
@@ -40,31 +40,36 @@
             text-align: center;
             letter-spacing: 3px;
             padding: 12px;
-            cursor: move;
             background: #000000aa;
             border-radius: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid #ff5500;
+            cursor: grab;
+            transition: 0.05s linear;
+        }
+        .pon-header:active {
+            cursor: grabbing;
         }
         .pon-header-title {
             display: flex;
             align-items: center;
             gap: 8px;
-            cursor: move;
             flex: 1;
+            pointer-events: none;
         }
         .pon-header-buttons {
             display: flex;
             gap: 8px;
+            pointer-events: auto;
         }
         .pon-collapse-btn {
             background: #2c2c2c;
             border: none;
             color: #ffaa66;
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
@@ -82,8 +87,8 @@
             background: #a00;
             border: none;
             color: white;
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
@@ -96,7 +101,6 @@
         }
         .pon-body {
             padding: 12px;
-            transition: 0.2s;
             overflow: hidden;
         }
         .pon-body.collapsed {
@@ -232,7 +236,7 @@
     `;
     document.body.appendChild(widget);
 
-    // ========== 3. LƯU TRẠNG THÁI ĐÓNG/MỞ & VỊ TRÍ ==========
+    // ========== 3. LƯU TRẠNG THÁI ==========
     let isCollapsed = GM_getValue('pon_collapsed', false);
     let widgetX = GM_getValue('pon_pos_x', null);
     let widgetY = GM_getValue('pon_pos_y', null);
@@ -245,13 +249,10 @@
             ponBody.classList.add('collapsed');
             collapseBtn.innerHTML = '▶';
             collapseBtn.title = 'Mở rộng';
-            widget.style.width = 'auto';
-            widget.style.minWidth = 'auto';
         } else {
             ponBody.classList.remove('collapsed');
             collapseBtn.innerHTML = '▼';
             collapseBtn.title = 'Thu gọn';
-            widget.style.width = '340px';
         }
         GM_setValue('pon_collapsed', isCollapsed);
     }
@@ -270,35 +271,51 @@
         widget.style.bottom = 'auto';
     }
     
-    // ========== 4. KÉO THẢ (có lưu vị trí) ==========
+    // ========== 4. KÉO THẢ - FIX HOÀN TOÀN ==========
     let isDragging = false;
     let dragStartX = 0, dragStartY = 0;
     let startLeft = 0, startTop = 0;
     const dragHandle = document.getElementById('pon-drag-handle');
     
+    // SỬA QUAN TRỌNG: Chỉ kéo khi click vào header, không kéo khi click vào button con
     dragHandle.addEventListener('mousedown', (e) => {
-        if(e.target.classList && (e.target.classList.contains('pon-collapse-btn') || e.target.classList.contains('close-pon'))) {
+        // Kiểm tra nếu click vào button (collapse hoặc close) thì không kéo
+        if(e.target === collapseBtn || e.target === document.getElementById('close-pon-btn') || collapseBtn.contains(e.target) || document.getElementById('close-pon-btn').contains(e.target)) {
             return;
         }
+        
         isDragging = true;
         dragStartX = e.clientX;
         dragStartY = e.clientY;
-        startLeft = widget.offsetLeft;
-        startTop = widget.offsetTop;
+        
+        // Lấy vị trí hiện tại (xử lý cả trường hợp đang dùng left/top hoặc right/bottom)
+        const rect = widget.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        
+        widget.style.left = startLeft + 'px';
+        widget.style.top = startTop + 'px';
+        widget.style.right = 'auto';
+        widget.style.bottom = 'auto';
+        
         widget.style.cursor = 'grabbing';
         e.preventDefault();
     });
     
     window.addEventListener('mousemove', (e) => {
         if(!isDragging) return;
-        let left = startLeft + (e.clientX - dragStartX);
-        let top = startTop + (e.clientY - dragStartY);
-        left = Math.min(window.innerWidth - widget.offsetWidth - 5, Math.max(5, left));
-        top = Math.min(window.innerHeight - widget.offsetHeight - 5, Math.max(5, top));
-        widget.style.left = left + 'px';
-        widget.style.top = top + 'px';
-        widget.style.right = 'auto';
-        widget.style.bottom = 'auto';
+        
+        let newLeft = startLeft + (e.clientX - dragStartX);
+        let newTop = startTop + (e.clientY - dragStartY);
+        
+        // Giới hạn trong màn hình
+        const maxLeft = window.innerWidth - widget.offsetWidth - 10;
+        const maxTop = window.innerHeight - widget.offsetHeight - 10;
+        newLeft = Math.min(maxLeft, Math.max(10, newLeft));
+        newTop = Math.min(maxTop, Math.max(10, newTop));
+        
+        widget.style.left = newLeft + 'px';
+        widget.style.top = newTop + 'px';
     });
     
     window.addEventListener('mouseup', () => {
@@ -311,14 +328,13 @@
         }
     });
     
-    // ========== 5. AUDIO ENGINE (giữ nguyên từ bản trước) ==========
+    // ========== 5. AUDIO ENGINE ==========
     let audioContext = null;
     let sourceNode = null;
     let gainNode = null;
     let filterNode = null;
     let stereoPanner = null;
     let convolver = null;
-    let mediaStream = null;
     let _railShaper = null;
     
     let dbGainVal = 40;
@@ -418,7 +434,6 @@
         }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaStream = stream;
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             sourceNode = audioContext.createMediaStreamSource(stream);
             gainNode = audioContext.createGain();
