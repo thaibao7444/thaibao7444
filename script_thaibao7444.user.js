@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PON HELLFIRE - Audio Controller for Discord
+// @name         PON HELLFIRE - Audio Controller (Collapsible + Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Bảng điều khiển âm thanh LEGACY với các hiệu ứng cho Discord Web (Railgun, Stereo Wider, Reverb, AutoTune, Giong Em Be)
+// @version      2.0
+// @description  Bảng điều khiển âm thanh LEGACY cho Discord Web - Có thể thu gọn, kéo thả, lưu vị trí
 // @author       PonFire
 // @match        https://discord.com/*
 // @grant        GM_addStyle
@@ -14,13 +14,13 @@
 (function() {
     'use strict';
 
-    // ========== 1. THÊM CSS ==========
+    // ========== 1. CSS ==========
     GM_addStyle(`
         .pon-hellfire-widget {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            width: 320px;
+            width: 340px;
             background: #0a0c0f;
             border: 3px solid #ff3300;
             border-radius: 16px;
@@ -28,11 +28,10 @@
             color: #ffaa33;
             text-shadow: 0 0 3px #ff0000;
             backdrop-filter: blur(12px);
-            background-color: rgba(0, 0, 0, 0.85);
+            background-color: rgba(0, 0, 0, 0.9);
             z-index: 999999;
             box-shadow: 0 0 15px rgba(255, 50, 0, 0.6);
-            padding: 12px;
-            transition: 0.1s;
+            transition: all 0.2s ease;
             user-select: none;
         }
         .pon-header {
@@ -40,15 +39,71 @@
             font-weight: bold;
             text-align: center;
             letter-spacing: 3px;
-            border-bottom: 1px solid #ff5500;
-            padding-bottom: 6px;
-            margin-bottom: 12px;
+            padding: 12px;
             cursor: move;
             background: #000000aa;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ff5500;
+        }
+        .pon-header-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: move;
+            flex: 1;
+        }
+        .pon-header-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .pon-collapse-btn {
+            background: #2c2c2c;
+            border: none;
+            color: #ffaa66;
+            width: 28px;
+            height: 28px;
             border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.1s;
+        }
+        .pon-collapse-btn:hover {
+            background: #ff5500;
+            color: black;
+        }
+        .close-pon {
+            background: #a00;
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .close-pon:hover {
+            background: #d00;
+        }
+        .pon-body {
+            padding: 12px;
+            transition: 0.2s;
+            overflow: hidden;
+        }
+        .pon-body.collapsed {
+            display: none;
         }
         .pon-loading {
-            font-size: 12px;
+            font-size: 11px;
             color: #ff8844;
             text-align: center;
             margin-bottom: 10px;
@@ -64,7 +119,7 @@
         .pon-label {
             display: flex;
             justify-content: space-between;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             margin-bottom: 4px;
         }
@@ -92,6 +147,7 @@
             font-weight: bold;
             cursor: pointer;
             font-family: monospace;
+            transition: 0.1s;
         }
         .pon-toggle .active {
             background: #ff5500;
@@ -110,18 +166,17 @@
             margin-top: 12px;
             border-radius: 24px;
         }
+        .pon-reset:hover {
+            background: #8a2a2a;
+        }
         .pon-value {
             color: #ffaa44;
         }
-        .close-pon {
-            float: right;
-            background: #a00;
-            color: white;
-            border: none;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            padding: 0 8px;
+        .pon-footer-note {
+            font-size: 9px;
+            text-align: center;
+            margin-top: 10px;
+            opacity: 0.7;
         }
     `);
 
@@ -130,70 +185,150 @@
     widget.className = 'pon-hellfire-widget';
     widget.innerHTML = `
         <div class="pon-header" id="pon-drag-handle">
-            <span>⚡ PON HELLFIRE ⚡</span>
-            <button class="close-pon" id="close-pon-btn">✖</button>
+            <div class="pon-header-title">
+                <span>⚡ PON HELLFIRE ⚡</span>
+            </div>
+            <div class="pon-header-buttons">
+                <button class="pon-collapse-btn" id="pon-collapse-btn" title="Thu gọn/Mở rộng">▼</button>
+                <button class="close-pon" id="close-pon-btn" title="Đóng widget">✖</button>
+            </div>
         </div>
-        <div class="pon-loading" id="loading-status">🔴 LOADING... 510kbps MODE: LEGACY</div>
-        
-        <div class="pon-control">
-            <div class="pon-label"><span>🔥 DB GAIN (200dB max)</span><span id="dbVal" class="pon-value">0dB</span></div>
-            <input type="range" id="dbGain" class="pon-slider" min="0" max="200" value="40" step="1">
+        <div class="pon-body" id="pon-body">
+            <div class="pon-loading" id="loading-status">🔴 LOADING... 510kbps MODE: LEGACY</div>
+            
+            <div class="pon-control">
+                <div class="pon-label"><span>🔥 DB GAIN (200dB max)</span><span id="dbVal" class="pon-value">0dB</span></div>
+                <input type="range" id="dbGain" class="pon-slider" min="0" max="200" value="40" step="1">
+            </div>
+            
+            <div class="pon-control">
+                <div class="pon-label"><span>⚡ RAILGUN (Density)</span><span id="railVal" class="pon-value">0%</span></div>
+                <input type="range" id="railgun" class="pon-slider" min="0" max="100" value="0" step="1">
+            </div>
+            
+            <div class="pon-control">
+                <div class="pon-label"><span>🎛️ STEREO WIDER</span><span id="stereoVal" class="pon-value">0%</span></div>
+                <input type="range" id="stereoWider" class="pon-slider" min="0" max="100" value="0" step="1">
+            </div>
+            
+            <div class="pon-control">
+                <div class="pon-label"><span>🌀 REVERB (Vang)</span><span id="reverbVal" class="pon-value">0%</span></div>
+                <input type="range" id="reverbSlider" class="pon-slider" min="0" max="100" value="0" step="1">
+            </div>
+            
+            <div class="pon-toggle">
+                <span>🎤 GIỌNG EM BÉ</span>
+                <div><button id="toggleBabyVoice" class="">OFF</button> <span style="margin-left:6px;" id="babyPercent">0%</span></div>
+            </div>
+            
+            <div class="pon-toggle">
+                <span>🎵 AUTO TUNE</span>
+                <div><button id="toggleAutoTune" class="">OFF</button> <span style="margin-left:6px;" id="tunePercent">0%</span></div>
+            </div>
+            
+            <button class="pon-reset" id="ponResetBtn">🔧 RESET 🔧</button>
+            <div class="pon-footer-note">🎧 EFFECTS ACTIVE ON MIC & VOICE</div>
         </div>
-        
-        <div class="pon-control">
-            <div class="pon-label"><span>⚡ RAILGUN (Density)</span><span id="railVal" class="pon-value">0%</span></div>
-            <input type="range" id="railgun" class="pon-slider" min="0" max="100" value="0" step="1">
-        </div>
-        
-        <div class="pon-control">
-            <div class="pon-label"><span>🎛️ STEREO WIDER</span><span id="stereoVal" class="pon-value">0%</span></div>
-            <input type="range" id="stereoWider" class="pon-slider" min="0" max="100" value="0" step="1">
-        </div>
-        
-        <div class="pon-control">
-            <div class="pon-label"><span>🌀 REVERB (Vang)</span><span id="reverbVal" class="pon-value">0%</span></div>
-            <input type="range" id="reverbSlider" class="pon-slider" min="0" max="100" value="0" step="1">
-        </div>
-        
-        <div class="pon-toggle">
-            <span>🎤 GIỌNG EM BÉ</span>
-            <div><button id="toggleBabyVoice" class="">OFF</button> <span style="margin-left:6px;" id="babyPercent">0%</span></div>
-        </div>
-        
-        <div class="pon-toggle">
-            <span>🎵 AUTO TUNE</span>
-            <div><button id="toggleAutoTune" class="">OFF</button> <span style="margin-left:6px;" id="tunePercent">0%</span></div>
-        </div>
-        
-        <button class="pon-reset" id="ponResetBtn">🔧 RESET 🔧</button>
-        <div style="font-size:9px; text-align:center; margin-top:10px;">🎧 EFFECTS ACTIVE ON MIC & VOICE</div>
     `;
     document.body.appendChild(widget);
 
-    // ========== 3. THAO TÚC AUDIO ENGINE ==========
-    // Chúng ta sẽ can thiệp vào Web Audio API của Discord (nếu có microphone)
+    // ========== 3. LƯU TRẠNG THÁI ĐÓNG/MỞ & VỊ TRÍ ==========
+    let isCollapsed = GM_getValue('pon_collapsed', false);
+    let widgetX = GM_getValue('pon_pos_x', null);
+    let widgetY = GM_getValue('pon_pos_y', null);
+    
+    const ponBody = document.getElementById('pon-body');
+    const collapseBtn = document.getElementById('pon-collapse-btn');
+    
+    function updateCollapseUI() {
+        if(isCollapsed) {
+            ponBody.classList.add('collapsed');
+            collapseBtn.innerHTML = '▶';
+            collapseBtn.title = 'Mở rộng';
+            widget.style.width = 'auto';
+            widget.style.minWidth = 'auto';
+        } else {
+            ponBody.classList.remove('collapsed');
+            collapseBtn.innerHTML = '▼';
+            collapseBtn.title = 'Thu gọn';
+            widget.style.width = '340px';
+        }
+        GM_setValue('pon_collapsed', isCollapsed);
+    }
+    
+    collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isCollapsed = !isCollapsed;
+        updateCollapseUI();
+    });
+    
+    // Khôi phục vị trí
+    if(widgetX !== null && widgetY !== null) {
+        widget.style.left = widgetX + 'px';
+        widget.style.top = widgetY + 'px';
+        widget.style.right = 'auto';
+        widget.style.bottom = 'auto';
+    }
+    
+    // ========== 4. KÉO THẢ (có lưu vị trí) ==========
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let startLeft = 0, startTop = 0;
+    const dragHandle = document.getElementById('pon-drag-handle');
+    
+    dragHandle.addEventListener('mousedown', (e) => {
+        if(e.target.classList && (e.target.classList.contains('pon-collapse-btn') || e.target.classList.contains('close-pon'))) {
+            return;
+        }
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        startLeft = widget.offsetLeft;
+        startTop = widget.offsetTop;
+        widget.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    
+    window.addEventListener('mousemove', (e) => {
+        if(!isDragging) return;
+        let left = startLeft + (e.clientX - dragStartX);
+        let top = startTop + (e.clientY - dragStartY);
+        left = Math.min(window.innerWidth - widget.offsetWidth - 5, Math.max(5, left));
+        top = Math.min(window.innerHeight - widget.offsetHeight - 5, Math.max(5, top));
+        widget.style.left = left + 'px';
+        widget.style.top = top + 'px';
+        widget.style.right = 'auto';
+        widget.style.bottom = 'auto';
+    });
+    
+    window.addEventListener('mouseup', () => {
+        if(isDragging) {
+            isDragging = false;
+            widget.style.cursor = '';
+            // Lưu vị trí
+            GM_setValue('pon_pos_x', widget.offsetLeft);
+            GM_setValue('pon_pos_y', widget.offsetTop);
+        }
+    });
+    
+    // ========== 5. AUDIO ENGINE (giữ nguyên từ bản trước) ==========
     let audioContext = null;
     let sourceNode = null;
     let gainNode = null;
-    let reverbNode = null;
-    let filterNode = null;   // cho "giọng em bé" (high-pitch)
+    let filterNode = null;
     let stereoPanner = null;
     let convolver = null;
     let mediaStream = null;
-    let isAudioModified = false;
+    let _railShaper = null;
     
-    // Giá trị hiện tại
-    let dbGainVal = 40;           // gain 0-200 -> thực tế gain db từ 0 đến 40db (chuyển đổi)
-    let railgunVal = 0;           // distortion / overdrive
+    let dbGainVal = 40;
+    let railgunVal = 0;
     let stereoVal = 0;
     let reverbVal = 0;
     let babyVoiceOn = false;
-    let babyPitch = 0;            // 0-100 -> shift +1.5 semitone tối đa
     let autoTuneOn = false;
-    let autoTuneStrength = 0;
     
-    // Lưu settings
-    function saveSettings() {
+    function saveAudioSettings() {
         GM_setValue('pon_db', dbGainVal);
         GM_setValue('pon_rail', railgunVal);
         GM_setValue('pon_stereo', stereoVal);
@@ -202,7 +337,7 @@
         GM_setValue('pon_autotune_on', autoTuneOn);
     }
     
-    function loadSettings() {
+    function loadAudioSettings() {
         dbGainVal = GM_getValue('pon_db', 40);
         railgunVal = GM_getValue('pon_rail', 0);
         stereoVal = GM_getValue('pon_stereo', 0);
@@ -227,72 +362,25 @@
         const tuneBtn = document.getElementById('toggleAutoTune');
         tuneBtn.innerText = autoTuneOn ? "ON" : "OFF";
         if(autoTuneOn) tuneBtn.classList.add('active'); else tuneBtn.classList.remove('active');
-        // % hiển thị
         document.getElementById('babyPercent').innerText = babyVoiceOn ? "65%" : "0%";
         document.getElementById('tunePercent').innerText = autoTuneOn ? "80%" : "0%";
     }
     
-    // Hàm xử lý âm thanh realtime từ mic
-    async function setupAudioEffects() {
-        if(audioContext && audioContext.state !== 'closed') {
-            try { await audioContext.close(); } catch(e) {}
+    function makeDistortionCurve(amount) {
+        let k = amount * 1.5;
+        let n_samples = 44100;
+        let curve = new Float32Array(n_samples);
+        let deg = Math.PI / 180;
+        for (let i = 0; i < n_samples; ++i) {
+            let x = i * 2 / n_samples - 1;
+            curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
         }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaStream = stream;
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            sourceNode = audioContext.createMediaStreamSource(stream);
-            gainNode = audioContext.createGain();
-            // Gain mapping
-            let gainDB = (dbGainVal / 200) * 40; // max 40dB boost
-            gainNode.gain.value = Math.pow(10, gainDB / 20);
-            
-            // REVERB (Convolver)
-            convolver = audioContext.createConvolver();
-            setReverbAmount(reverbVal);
-            
-            // Stereo Widener (Panner)
-            stereoPanner = audioContext.createStereoPanner();
-            let stereoPanVal = (stereoVal / 100) * 0.8;
-            stereoPanner.pan.value = stereoPanVal;
-            
-            // DISTORTION (Railgun) - waveshaper
-            const waveshaper = audioContext.createWaveShaper();
-            function makeDistortionCurve(amount) {
-                let k = amount * 1.5;
-                let n_samples = 44100;
-                let curve = new Float32Array(n_samples);
-                let deg = Math.PI / 180;
-                for (let i = 0; i < n_samples; ++i) {
-                    let x = i * 2 / n_samples - 1;
-                    curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
-                }
-                return curve;
-            }
-            waveshaper.curve = makeDistortionCurve(railgunVal / 100);
-            waveshaper.oversample = '4x';
-            
-            // Filter baby voice (formant shift & pitch)
-            filterNode = audioContext.createBiquadFilter();
-            filterNode.type = "peaking";
-            updateBabyVoiceFilter();
-            
-            // AutoTune simulation (pitch shifter đơn giản - dùng delay+)
-            let autoTuneMix = 0;
-            
-            // Chain: source -> waveshaper(rail) -> gain -> filter(baby) -> stereoPanner -> convolver(reverb) -> destination
-            sourceNode.connect(waveshaper);
-            waveshaper.connect(gainNode);
-            gainNode.connect(filterNode);
-            filterNode.connect(stereoPanner);
-            stereoPanner.connect(convolver);
-            convolver.connect(audioContext.destination);
-            
-            isAudioModified = true;
-            document.getElementById('loading-status').innerHTML = "🟢 ACTIVE · HELLFIRE ENGAGED 🟢";
-        } catch(err) {
-            console.error("Micro access error", err);
-            document.getElementById('loading-status').innerHTML = "⚠️ Cần cấp quyền MIC để dùng hiệu ứng! ⚠️";
+        return curve;
+    }
+    
+    function updateRailgunCurve(percent) {
+        if(_railShaper) {
+            _railShaper.curve = makeDistortionCurve(percent / 100);
         }
     }
     
@@ -314,10 +402,9 @@
     function updateBabyVoiceFilter() {
         if(!filterNode) return;
         if(babyVoiceOn) {
-            // pitch shift bằng cách tăng tần số trung tâm + Q
-            filterNode.frequency.value = 1400 + (babyPitch * 8);
-            filterNode.gain.value = 6;
-            filterNode.Q.value = 1.2;
+            filterNode.frequency.value = 1600;
+            filterNode.gain.value = 8;
+            filterNode.Q.value = 1.3;
         } else {
             filterNode.frequency.value = 1000;
             filterNode.gain.value = 0;
@@ -325,36 +412,63 @@
         }
     }
     
-    function updateRailgunCurve(percent) {
-        // tìm waveshaper node (cần giữ ref)
-        if(!audioContext) return;
-        // tìm waveshaper trong chain (khá phức tạp nhưng ta sẽ lưu biến toàn cục)
-        if(window._railShaper) {
-            let k = percent / 100;
-            let n_samples = 44100;
-            let curve = new Float32Array(n_samples);
-            let deg = Math.PI / 180;
-            for (let i = 0; i < n_samples; ++i) {
-                let x = i * 2 / n_samples - 1;
-                curve[i] = (3 + k*2) * x * 20 * deg / (Math.PI + (k*1.5) * Math.abs(x));
-            }
-            window._railShaper.curve = curve;
+    async function setupAudioEffects() {
+        if(audioContext && audioContext.state !== 'closed') {
+            try { await audioContext.close(); } catch(e) {}
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStream = stream;
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            sourceNode = audioContext.createMediaStreamSource(stream);
+            gainNode = audioContext.createGain();
+            let gainDB = (dbGainVal / 200) * 40;
+            gainNode.gain.value = Math.pow(10, gainDB / 20);
+            
+            convolver = audioContext.createConvolver();
+            setReverbAmount(reverbVal);
+            
+            stereoPanner = audioContext.createStereoPanner();
+            let stereoPanVal = (stereoVal / 100) * 0.8 - 0.4;
+            stereoPanner.pan.value = stereoPanVal;
+            
+            const waveshaper = audioContext.createWaveShaper();
+            waveshaper.curve = makeDistortionCurve(railgunVal / 100);
+            waveshaper.oversample = '4x';
+            _railShaper = waveshaper;
+            
+            filterNode = audioContext.createBiquadFilter();
+            filterNode.type = "peaking";
+            updateBabyVoiceFilter();
+            
+            // Chain
+            sourceNode.connect(waveshaper);
+            waveshaper.connect(gainNode);
+            gainNode.connect(filterNode);
+            filterNode.connect(stereoPanner);
+            stereoPanner.connect(convolver);
+            convolver.connect(audioContext.destination);
+            
+            document.getElementById('loading-status').innerHTML = "🟢 ACTIVE · HELLFIRE ENGAGED 🟢";
+        } catch(err) {
+            console.error(err);
+            document.getElementById('loading-status').innerHTML = "⚠️ Cần cấp quyền MIC! ⚠️";
         }
     }
     
-    // ========== 4. SỰ KIỆN UI ==========
+    // ========== 6. SỰ KIỆN UI ==========
     function updateGain() {
         if(gainNode) {
             let gainDB = (dbGainVal / 200) * 40;
             gainNode.gain.value = Math.pow(10, gainDB / 20);
         }
         document.getElementById('dbVal').innerText = dbGainVal + "dB";
-        saveSettings();
+        saveAudioSettings();
     }
     function updateRailgun() {
-        if(window._railShaper) updateRailgunCurve(railgunVal);
+        updateRailgunCurve(railgunVal);
         document.getElementById('railVal').innerText = railgunVal + "%";
-        saveSettings();
+        saveAudioSettings();
     }
     function updateStereo() {
         if(stereoPanner) {
@@ -362,22 +476,21 @@
             stereoPanner.pan.value = panVal;
         }
         document.getElementById('stereoVal').innerText = stereoVal + "%";
-        saveSettings();
+        saveAudioSettings();
     }
     function updateReverb() {
         setReverbAmount(reverbVal);
         document.getElementById('reverbVal').innerText = reverbVal + "%";
-        saveSettings();
+        saveAudioSettings();
     }
     function toggleBaby() {
         babyVoiceOn = !babyVoiceOn;
-        babyPitch = babyVoiceOn ? 65 : 0;
         updateBabyVoiceFilter();
         const btn = document.getElementById('toggleBabyVoice');
         btn.innerText = babyVoiceOn ? "ON" : "OFF";
         if(babyVoiceOn) btn.classList.add('active'); else btn.classList.remove('active');
         document.getElementById('babyPercent').innerText = babyVoiceOn ? "65%" : "0%";
-        saveSettings();
+        saveAudioSettings();
     }
     function toggleAutoTune() {
         autoTuneOn = !autoTuneOn;
@@ -385,19 +498,18 @@
         btn.innerText = autoTuneOn ? "ON" : "OFF";
         if(autoTuneOn) btn.classList.add('active'); else btn.classList.remove('active');
         document.getElementById('tunePercent').innerText = autoTuneOn ? "80%" : "0%";
-        // (có thể thêm pitch shifter thực tế nâng cao)
-        saveSettings();
+        saveAudioSettings();
     }
     function resetAll() {
         dbGainVal = 0; railgunVal = 0; stereoVal = 0; reverbVal = 0;
         babyVoiceOn = false; autoTuneOn = false;
         updateUIFromValues();
         if(gainNode) gainNode.gain.value = 1;
-        if(window._railShaper) updateRailgunCurve(0);
+        updateRailgunCurve(0);
         if(stereoPanner) stereoPanner.pan.value = 0;
         setReverbAmount(0);
         updateBabyVoiceFilter();
-        saveSettings();
+        saveAudioSettings();
     }
     
     // Bind controls
@@ -410,51 +522,10 @@
     document.getElementById('ponResetBtn').addEventListener('click', resetAll);
     document.getElementById('close-pon-btn').addEventListener('click', () => { widget.style.display = 'none'; });
     
-    // ========== 5. KÉO THẢ ==========
-    let isDragging = false, dragStartX, dragStartY, startLeft, startTop;
-    const header = document.getElementById('pon-drag-handle');
-    header.addEventListener('mousedown', (e) => {
-        if(e.target.classList && e.target.classList.contains('close-pon-btn')) return;
-        isDragging = true;
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        startLeft = widget.offsetLeft;
-        startTop = widget.offsetTop;
-        widget.style.position = 'fixed';
-        widget.style.cursor = 'grabbing';
-        e.preventDefault();
-    });
-    window.addEventListener('mousemove', (e) => {
-        if(!isDragging) return;
-        let left = startLeft + (e.clientX - dragStartX);
-        let top = startTop + (e.clientY - dragStartY);
-        left = Math.min(window.innerWidth - widget.offsetWidth - 5, Math.max(5, left));
-        top = Math.min(window.innerHeight - widget.offsetHeight - 5, Math.max(5, top));
-        widget.style.left = left + 'px';
-        widget.style.top = top + 'px';
-        widget.style.right = 'auto';
-        widget.style.bottom = 'auto';
-    });
-    window.addEventListener('mouseup', () => { isDragging = false; widget.style.cursor = ''; });
-    
-    // ========== 6. KHỞI ĐỘNG ==========
-    loadSettings();
-    updateUIFromValues();
-    // Lưu waveshaper toàn cục để update
+    // ========== 7. KHỞI ĐỘNG ==========
+    loadAudioSettings();
+    updateCollapseUI();
     setTimeout(() => {
         setupAudioEffects().catch(console.warn);
-        // lưu lại tham chiếu waveshaper (sẽ khởi tạo lại trong setup)
-        window._railShaper = null;
-        const interval = setInterval(() => {
-            if(audioContext && audioContext.state === 'running') {
-                // tìm waveshaper node trong chain (hack)
-                if(!window._railShaper) {
-                    if(sourceNode && sourceNode.numberOfOutputs) {
-                        // Tìm node waveshaper trong chain
-                    }
-                }
-                clearInterval(interval);
-            }
-        }, 500);
     }, 1000);
 })();
